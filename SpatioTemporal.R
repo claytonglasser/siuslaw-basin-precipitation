@@ -45,12 +45,12 @@ siuslaw <- clean.csv %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, D
 siuslaw.obs <- ungroup(siuslaw) %>% select(water_date, STATION, PRCP)
 colnames(siuslaw.obs) <- c("date", "ID", "obs") #column names required exactly as is
 
-head(siuslaw.obs)
+glimpse(siuslaw.obs)
 
 ###siuslaw.obs.wide <- siuslaw.obs %>% spread(STATION, PRCP, fill = NA, convert = FALSE) #was used for matrix; now using DF format instead
 
 ##covars
-siuslaw.covars.tmp <- ungroup(siuslaw) %>% select(STATION, LATITUDE, LONGITUDE, ELEVATION) #convenience variable for getting the geo data down to unique instances
+siuslaw.covars.tmp <- ungroup(siuslaw) %>% select(STATION, LATITUDE, LONGITUDE, ELEVATION) #convenience variable for getting the geo data down to unique instances -- is this creaitng the LUR.in problem?
 siuslaw.covars <- unique(siuslaw.covars.tmp) 
 colnames(siuslaw.covars) <- c("ID", "LATITUDE", "LONGITUDE", "ELEVATION") #STdata DFs match up on ID column
 
@@ -59,6 +59,14 @@ siuslaw.covars
 #create STdata object
 
 siuslaw.ST <- createSTdata(obs=siuslaw.obs, covars=siuslaw.covars) #SpationTemporal DF/matrix not indluded as this process does not require additonal covariates (or does ELEVATION need to be in there?)
+
+names(siuslaw.ST)
+siuslaw.ST$trend
+siuslaw.ST$trend.fnc 
+glimpse(siuslaw.ST$trend$date) 
+glimpse(siuslaw.obs)
+siuslaw.ST
+print(siuslaw.ST)
 
 #Plot occurance of observations
 
@@ -189,9 +197,9 @@ plotCI(siuslaw.ST$covars$ELEVATION, beta.lm$beta[,1],
 
 #Specifying the model
 
-LUR <- list(~ELEVATION) #I don't think this is constructed correctly
-cov.beta <- list(covf="exp", nugget=FALSE) #I don't know what NUGGET is, or what you can set it to. Tutorial has it set to "type" which I do not need
-cov.nu <- list(covf="exp", nugget=~ELEVATION, random.effect=FALSE)
+LUR <- list(~ELEVATION, ~LATITUDE, ~LONGITUDE) 
+cov.beta <- list(covf="exp", nugget=FALSE) 
+cov.nu <- list(covf="exp", nugget=~ELEVATION, random.effect=FALSE) 
 
 locations <- list(coords=c("LONGITUDE","LATITUDE"), long.lat=c("LONGITUDE","LATITUDE")) #not sure if I can exclude one of these arguments
 
@@ -200,35 +208,72 @@ siuslaw.ST.model <- createSTmodel(siuslaw.ST, LUR=LUR,
                               cov.beta=cov.beta, cov.nu=cov.nu,
                               locations=locations)
 
-siuslaw.ST$covars
+print(siuslaw.ST.model)
 
-list(siuslaw.ST$ELEVATION)
-
-#----
-#NOTES
-
-#Can't get LUR=LUR to work, becuase of ELEVATION issues
-
-#Since ELEVATION only varies with location, shouldn't it's corrlation be identical? i.e. not add any info? Perhaps not neccsary to include.
-
-#----
 
 #Estimation
+
+vignette("ST_intro", package="SpatioTemporal")
 
 ###To avoid potential numerical optimisation issues, the estimation function allows for multiple starting points, returning all optima found. The functions loglikeSTdim and loglikeSTnames gives the number of parameters (and other model dimension) and the names, i.e. expected order, of the parameters. Using this information a two column matrix, where each column represents a different optimisation starting point, is constructed:
 
 dim <- loglikeSTdim(siuslaw.ST.model)
+
 x.init <- cbind(c( rep(2, dim$nparam.cov-1), 0),
                   c( rep(c(1,-3), dim$m+1), -3, 0))
+
 rownames(x.init) <- loglikeSTnames(siuslaw.ST.model, all=FALSE)
 
 ##Model parameters are then estimated through
 
-est.siuslaw.ST.model <- estimate(siuslaw.ST.model, x.init, type="p", hessian.all=TRUE) ###This won't finish running, so this variable doesn't exist for later use: "Bad direction in the line search; refresh the lbfgs memory and restart the iteration."
+est.siuslaw.ST.model <- estimate(siuslaw.ST.model, x.init, type="p", hessian.all=TRUE) 
 
-#Prediction ##Won't work without fixing estimation
 
-pred <- predict(siuslaw.ST.model, est.siuslaw.ST.model, LTA=TRUE, type="p")
+# est.siuslaw.ST.model <- estimate(siuslaw.ST.model, x.init, type="p", hessian.all=TRUE)
+#Optimisation using starting value 1/2
+#N = 10, M = 5 machine precision = 2.22045e-16
+#At X0, 0 variables are exactly at the bounds
+#At iterate     0  f=        31926  |proj g|=           17
+#At iterate    10  f =       -22040  |proj g|=         16.78
+#At iterate    20  f =       -22571  |proj g|=        16.906
+#At iterate    30  f =       -22592  |proj g|=        16.828
+#At iterate    40  f =       -22593  |proj g|=        16.825
+#At iterate    50  f =       -22607  |proj g|=        13.144
+#At iterate    60  f =       -22608  |proj g|=         2.189
+
+#iterations 66
+#function evaluations 100
+#segments explored during Cauchy searches 70
+#BFGS updates skipped 0
+#active bounds at final generalized Cauchy point 0
+#norm of the final projected gradient 3.57171
+#final function value -22608.4
+
+#F = -22608.4
+#final  value -22608.399402 
+#converged
+
+#Optimisation using starting value 2/2
+#N = 10, M = 5 machine precision = 2.22045e-16
+#At X0, 0 variables are exactly at the bounds
+#At iterate     0  f=       -23382  |proj g|=           18
+#At iterate    10  f =       -24293  |proj g|=        18.125
+
+#iterations 16
+#function evaluations 41
+#segments explored during Cauchy searches 19
+#BFGS updates skipped 0
+#active bounds at final generalized Cauchy point 0
+#norm of the final projected gradient 15.8013
+#final function value -24489.6
+
+#F = -24489.6
+#l(0) > u(0).  No feasible solutionfinal  value -24489.591465 
+#converged
+
+gc(verbose = getOption("verbose"), reset = FALSE, full = TRUE)
+
+pred <- predict(siuslaw.ST.model, est.siuslaw.ST.model, LTA=TRUE, type="p") #Error: cannot allocate vector of size 769.7 Mb
 pred.log <- predict(siuslaw.ST.model, est.siuslaw.ST.model, LTA=TRUE,
                       transform="unbiased", type="p")
 
