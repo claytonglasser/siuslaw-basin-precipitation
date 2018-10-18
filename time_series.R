@@ -46,7 +46,7 @@ USC00353995 <- siuslaw %>% filter(STATION == "USC00353995")
 
 #creating time sereis for each location (STATION)
 
-US1ORLA0076_TS <- ts(US1ORLA0076$PRCP, start=c(2007, 10), end=c(2018, 9), frequency = 365)
+US1ORLA0076_TS <- ts(US1ORLA0076$PRCP, start=c(2007, 10), end=c(2018, 9), frequency = 12)
 US1ORLA0003_TS <- ts(US1ORLA0003$PRCP, start=c(2007, 10), end=c(2018, 9), frequency = 365)
 US1ORLA0031_TS <- ts(US1ORLA0031$PRCP, start=c(2007, 10), end=c(2018, 9), frequency = 365)
 US1ORLA0091_TS <- ts(US1ORLA0091$PRCP, start=c(2007, 10), end=c(2018, 9), frequency = 365)
@@ -71,7 +71,7 @@ plotNA.distribution(USC00355204_TS, main="NA's in USC00355204")
 plotNA.distribution(US1ORLA0132_TS, main="NA's in US1ORLA0132")
 plotNA.distribution(USC00353995_TS, main="NA's in USC00353995")
 
-sum(is.na(US1ORLA0076_TS))
+sum(is.na(US1ORLA0132_TS))
 
 str(US1ORLA0132_TS)
 
@@ -80,18 +80,18 @@ US1ORLA0132_IMP_Arima <- na.kalman(US1ORLA0132_TS, model = "auto.arima", smooth 
 
 plotNA.imputations(US1ORLA0076_TS, US1ORLA0076_IMP, x.withTruth = NULL)
 
-#--------------------------------- Forecasting
 
+#--------------------------------- Forecasting
 
 #seasonality and decomposition
 
-US1ORLA0132_TS_decomp = stl(US1ORLA0132_TS, "periodic")
+US1ORLA0076_TS_decomp = stl(US1ORLA0076_TS, "periodic") #Error in na.fail.default(as.ts(x)) : missing values in object
 
-US1ORLA0132_TS_deseasonal_cnt <- seasadj(US1ORLA0132_TS_decomp)
+US1ORLA0076_TS_deseasonal_cnt <- seasadj(US1ORLA0076_TS_decomp)
 
-plot(US1ORLA0132_TS_decomp)
+plot(US1ORLA0076_TS_decomp)
 
-#test for staionarity
+#test for staionarity vs trend
 
 adf.test(US1ORLA0076_TS, alternative = "stationary")
 
@@ -103,7 +103,7 @@ pacf(US1ORLA0076_TS, main='')
 
 #seasonal differencing
 
-US1ORLA0076_TS_count_dl = diff(US1ORLA0076_TS_deseasonal_cnt, differences = 1)
+US1ORLA0076_TS_count_dl = diff(US1ORLA0076_TS_deseasonal_cnt, differences = 1) #what is an appropriate score for the Dickey-Fuller value?nIt goes up in proportion to the number of differences.
 
 plot(US1ORLA0076_TS_count_dl)
 
@@ -111,35 +111,33 @@ adf.test(US1ORLA0076_TS_count_dl, alternative = "stationary")
 
 acf(US1ORLA0076_TS_count_dl, main='ACF for differenced series')
 
-pacf(US1ORLA0076_TS_count_dl, main='PACF for differenced series')
+pacf(US1ORLA0076_TS_count_dl, main='PACF for differenced series') #The persistence of high values in acf plot probably represent a long term positive trend. 
 
 #fitting ARIMA model
 
 ##get p d q values
 auto.arima(US1ORLA0076_TS_deseasonal_cnt, seasonal = FALSE)
+auto.arima(US1ORLA0076_TS_deseasonal_cnt, seasonal = TRUE)
 
 ##evaluate and iterate
 
-US1ORLA0076_TS_fit <- auto.arima(US1ORLA0076_TS_deseasonal_cnt, seasonal = FALSE)
-tsdisplay(residuals(US1ORLA0076_TS_fit), lag.max=40, main = '(0,0,0)') #auto
+US1ORLA0076_TS_fit <- auto.arima(US1ORLA0076_TS_deseasonal_cnt, seasonal = TRUE)
+tsdisplay(residuals(US1ORLA0076_TS_fit), lag.max=50, main = '(0,0,0)') 
 
-US1ORLA0076_TS_fit2 <- arima(US1ORLA0076_TS_deseasonal_cnt, order=c(0,1,7))
-tsdisplay(residuals(US1ORLA0076_TS_fit2), lag.max=40, main = '(1,0,0)') #works better
-
-US1ORLA0076_TS_fit3 <- arima(US1ORLA0076_TS_deseasonal_cnt, order=c(0,0,7))
-tsdisplay(residuals(US1ORLA0076_TS_fit3), lag.max=40, main = '(2,0,7)') #works better
+US1ORLA0076_TS_fit2 <- arima(US1ORLA0076_TS_deseasonal_cnt, order=c(2,0,0))
+tsdisplay(residuals(US1ORLA0076_TS_fit2), lag.max=50, main = '(2,0,0)') 
 
 par(mfrow=c(1,1))
-US1ORLA0076_TS_fcast <- forecast(US1ORLA0076_TS_fit2, h=12)
+US1ORLA0076_TS_fcast <- forecast(US1ORLA0076_TS_fit, h=12)
 plot(US1ORLA0076_TS_fcast)
 
 #test model performance with holdout set
 
-US1ORLA0076_TS_holdout <-subset(ts(US1ORLA0076_TS_deseasonal_cnt), start = 2007, end = 2013)
-US1ORLA0076_TS_no_holdout  = arima(subset(ts(US1ORLA0076_TS_deseasonal_cnt),  start = 2013, end = 2018), order=c(0,1,7))
-fcast_US1ORLA0076_TS_no_holdout <- forecast(US1ORLA0076_TS_no_holdout, h=365)
-plot(fcast_US1ORLA0076_TS_no_holdout, main='') #Error in arima(subset(ts(US1ORLA0076_TS_deseasonal_cnt), start = 2013,:too few non-missing observations
+US1ORLA0076_TS_holdout <-subset(ts(US1ORLA0076_TS_deseasonal_cnt), start = 2007, end = 2015)
+US1ORLA0076_TS_no_holdout  = arima(subset(ts(US1ORLA0076_TS_deseasonal_cnt),  start = 2016, end = 2017), order=c(0,0,0)) 
+fcast_US1ORLA0076_TS_no_holdout <- forecast(US1ORLA0076_TS_no_holdout, h=12)
+plot(fcast_US1ORLA0076_TS_no_holdout, main='') 
 
 
-
+lines(ts(US1ORLA0076_TS_deseasonal_cnt))
 
