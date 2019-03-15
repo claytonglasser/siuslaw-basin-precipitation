@@ -1,0 +1,179 @@
+---
+title: "Exploatory Visualization"
+author: "Clayton Glasser"
+date: "August 21, 2018"
+output: html_document
+---
+
+## Install Packages
+
+```{r packages}
+install.packages('tidyverse')
+library(tidyverse)
+install.packages('naniar')
+library(naniar)
+install.packages('ggmap')
+library(ggmap)
+install.packages('mapproj')
+library(mapproj)
+```
+
+
+## Read CSVs into dataframes
+
+```{r }
+florence_1 <- read_csv("1424429.csv")
+florence_2 <- read_csv("1424435.csv")
+northeast <- read_csv("1424479.csv")
+southeast <- read_csv("1424485.csv")
+```
+
+
+## Inspect dataframe construct
+
+```{r }
+glimpse(florence_1)
+glimpse(florence_2)
+glimpse(northeast)
+glimpse(southeast)
+
+str(florence_1)
+str(florence_2)
+str(northeast)
+str(southeast)
+
+colnames(florence_1)
+colnames(florence_2)
+colnames(northeast)
+colnames(southeast)
+```
+
+
+## Visualize missing data with vis_miss from nanair library. Ignore large data warning.
+
+```{r }
+vis_miss(florence_1, warn_large_dat = FALSE) + labs(y = "missing data by variable in florence_1")
+vis_miss(florence_2, warn_large_dat = FALSE) + labs(y = "missing data by variable in florence_2")
+vis_miss(northeast, warn_large_dat = FALSE) + labs(y = "missing data by variable in northeast")
+vis_miss(southeast, warn_large_dat = FALSE) + labs(y = "missing data by variable in southeast")
+```
+
+
+## Create new dataframes that share the same column order (some dfs still missing whole columns)
+
+```{r }
+florence_1_reordered <- florence_1 %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, DATE, PRCP, PRCP_ATTRIBUTES, SNOW, SNOW_ATTRIBUTES, SNWD, SNWD_ATTRIBUTES, TMAX, TMAX_ATTRIBUTES, TMIN, TMIN_ATTRIBUTES, TOBS, TOBS_ATTRIBUTES)
+
+florence_2_reordered <- florence_2 %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, DATE, PRCP, PRCP_ATTRIBUTES, SNOW, SNOW_ATTRIBUTES, SNWD, SNWD_ATTRIBUTES, TAVG, TAVG_ATTRIBUTES, TMAX, TMAX_ATTRIBUTES, TMIN, TMIN_ATTRIBUTES, TOBS, TOBS_ATTRIBUTES)
+
+northeast_reordered <- northeast %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, DATE, PRCP, PRCP_ATTRIBUTES, SNOW, SNOW_ATTRIBUTES, SNWD, SNWD_ATTRIBUTES,TAVG, TAVG_ATTRIBUTES, TMAX, TMAX_ATTRIBUTES, TMIN, TMIN_ATTRIBUTES, TOBS, TOBS_ATTRIBUTES)
+
+southeast_reordered <- southeast %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, DATE, PRCP, PRCP_ATTRIBUTES, SNOW, SNOW_ATTRIBUTES, SNWD, SNWD_ATTRIBUTES, TAVG, TAVG_ATTRIBUTES, TMAX, TMAX_ATTRIBUTES, TMIN, TMIN_ATTRIBUTES)
+```
+
+
+## Vizualize missing data in the resulting dataframes
+
+```{r }
+vis_miss(florence_1_reordered, warn_large_dat = FALSE)
+vis_miss(florence_2_reordered, warn_large_dat = FALSE)
+vis_miss(northeast_reordered, warn_large_dat = FALSE)
+vis_miss(southeast_reordered, warn_large_dat = FALSE)
+```
+
+## Unify four dataframes into one by row-binding a on b, forming x, which is bound on c, forming y, which is bound on d, forming z (unified_3). Data is treated as characters to avoid errors. 
+
+```{r }
+unified_1 <- bind_rows(mutate_all(florence_1_reordered, as.character), mutate_all(florence_2_reordered, as.character))
+unified_2 <- bind_rows(mutate_all(unified_1, as.character), mutate_all(northeast_reordered, as.character))
+unified_3 <- bind_rows(mutate_all(unified_2, as.character), mutate_all(southeast_reordered, as.character))
+```
+
+## Vizualize the resulting unified dataframe
+
+```{r }
+vis_miss(unified_3, warn_large_dat = FALSE)
+```
+
+## Write the df to a csv for backup
+
+```{r }
+write.csv(unified_3, file = "unified_data.csv",row.names=FALSE, na="")
+```
+
+## Convert variables to appropriate object types
+
+```{r }
+unified_3$STATION <- as.factor(unified_3$STATION)
+unified_3$NAME <- as.factor(unified_3$NAME)
+unified_3$LONGITUDE <- as.numeric(as.character(unified_3$LONGITUDE))
+unified_3$LATITUDE <- as.numeric(as.character(unified_3$LATITUDE))
+unified_3$ELEVATION <- as.numeric(as.character(unified_3$ELEVATION))
+unified_3$PRCP <- as.numeric(as.character(unified_3$PRCP))
+```
+
+## Vizualization of data missingness within unified_3, grouped by NAME
+
+```{r }
+gg_miss_fct(x = unified_3, fct = NAME) + labs(title = "missing data by station in unified_3")
+
+```
+
+## Vizualization of data missingness within unified_3, grouped by variable
+
+```{r }
+gg_miss_var(unified_3) + labs(y = "Data missingness in unified_3 grouped by")
+
+```
+
+## Vizualization of data missingness within unified_3, grouped by variable, facted by NAME
+
+```{r }
+gg_miss_var(unified_3,
+            facet = NAME)
+
+```
+
+## Create a terrain map centered on Mapleton, Oregon big enough to encompass all station locations
+
+```{r }
+map <- get_map(
+  location = c(-123.858978, 44.031369), # Mapleton Oregon
+  source = "google", zoom = 10, maptype = "terrain"
+)
+
+```
+
+## Select essential columns for mapping
+
+```{r }
+map_data <- unified_3 %>% select(STATION, NAME, LATITUDE, LONGITUDE, ELEVATION, PRCP)
+
+```
+
+## Create a varible containing unified_3 > grouped by STATION >  mutated a "count" column containing the number of observations according to STATION factor > ungroup > retain only unique/distinct rows. I.e. create a dataframe containing one row per STATION and a COUNT column containiing the number of observations in that group. 
+
+```{r }
+station_obs <- map_data %>% 
+  group_by(STATION) %>% 
+  mutate(count = n()) %>% 
+  ungroup %>% 
+  distinct(STATION, .keep_all = TRUE)
+
+```
+
+## Create a varible station_stats containg the created map, with the station geo-plotted on top, with size according to PRCP data qty and color according to station elevation
+
+```{r }
+station_stats <- ggmap(map) + geom_point(data = station_obs, 
+                      aes(LONGITUDE, LATITUDE, color=ELEVATION, size=count), alpha=0.75)
+
+```
+## Show plot on map with optimized color and size scales
+
+```{r }
+print(station_stats +
+        scale_colour_gradient(low = "blue", high = "red")) +
+        scale_size_continuous(range = c(3, 10))
+
+```
